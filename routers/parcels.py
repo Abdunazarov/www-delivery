@@ -2,7 +2,7 @@
 from typing import List
 
 # thirdparty
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from celery_tasks.delivery_costs_task import update_delivery_costs
@@ -21,40 +21,54 @@ from services.parcel_service import (
 router = APIRouter(prefix="/parcels", tags=["PARCELS"])
 
 
-@router.post("", response_model=ParcelResponse)
+@router.post("", response_model=ParcelResponse, summary="Create a new parcel")
 async def create_new_parcel(parcel: ParcelCreate, session: AsyncSession = Depends(get_session)):
     """
-    Create a new parcel
+    Creates a new parcel with the given parcel information.
+
+    - **parcel**: _ParcelCreate_ - Parcel information to be created.
     """
     parcel_type = await get_type_by_id(session=session, type_id=parcel.type_id)
 
     if not parcel_type:
-        raise HTTPException(status_code=404, detail="Type not found")
+        raise HTTPException(status_code=404, detail="Parcel type not found")
 
     return await create_parcel(session=session, parcel=parcel)
 
 
-@router.get("/types", response_model=List[ParcelTypeResponse])
+@router.get("/types", response_model=List[ParcelTypeResponse], summary="List all parcel types")
 async def get_all_parcel_types(session: AsyncSession = Depends(get_session)):
     """
-    Get all parcel types
+    Retrieves a list of all available parcel types.
     """
     return await get_parcel_types(session=session)
 
 
-@router.get("", response_model=List[ParcelResponse])
-async def get_all_parcels(page: int = 1, limit: int = 10, session: AsyncSession = Depends(get_session)):
+@router.get("", response_model=List[ParcelResponse], summary="List parcels")
+async def get_all_parcels(
+    page: int = Query(1, description="Page number of the parcels list"),
+    limit: int = Query(10, description="Number of parcels to return per page"),
+    session: AsyncSession = Depends(get_session),
+):
     """
-    Get all parcels
+    Retrieves a paginated list of parcels.
+
+    - **page**: _int_ - Page number of the parcels list.
+    - **limit**: _int_ - Number of parcels to return per page.
     """
     parcels = await get_parcels(session, page=page, limit=limit)
     return parcels
 
 
-@router.get("/{parcel_id}", response_model=ParcelResponse)
-async def get_one_parcel(parcel_id: int, session: AsyncSession = Depends(get_session)):
+@router.get("/{parcel_id}", response_model=ParcelResponse, summary="Get a single parcel")
+async def get_one_parcel(
+    parcel_id: int = Path(..., description="The ID of the parcel to retrieve"),
+    session: AsyncSession = Depends(get_session),
+):
     """
-    Get one parcel by id
+    Retrieves a single parcel by its ID.
+
+    - **parcel_id**: _int_ - The ID of the parcel to retrieve.
     """
     parcel = await get_parcel(session, parcel_id=parcel_id)
     if parcel is None:
@@ -63,10 +77,10 @@ async def get_one_parcel(parcel_id: int, session: AsyncSession = Depends(get_ses
     return parcel
 
 
-@router.post("/calculate-delivery-cost", response_model=dict)
+@router.post("/calculate-delivery-cost", response_model=dict, summary="Calculate delivery costs")
 async def run_delivery_cost_calculation():
     """
-    Run the task to calculate devlivery cost for parcels
+    Triggers a background task to calculate delivery costs for all parcels.
     """
     update_delivery_costs.delay()
-    return {"success": "Delivery cost calculated"}
+    return {"success": "Delivery cost calculation task started"}
